@@ -1,0 +1,145 @@
+services:
+  bango-test:
+    build: 
+      context: ./bango
+    command: ["node", "dist/src/main.js"]
+    container_name: bango-test
+    depends_on:
+      - bango-test-db
+    env_file:
+      - ./bango/.env.dev
+    networks:
+      - bango_network
+  
+  bango-test-db:
+    image: postgres:14-alpine
+    container_name: bango_test_postgres
+    environment:
+      POSTGRES_DB: ${BANGO_DB}
+      POSTGRES_USER: ${BANGO_DB_USER}
+      POSTGRES_PASSWORD: ${BANGO_DB_PASSWORD}
+    expose:
+      - 5432
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bango_network
+
+  shopr-test:
+    build:
+      context: ./shopr-bango
+      dockerfile: Dockerfile
+    container_name: shopr-test
+    command: ["node", "dist/src/main.js"]
+    depends_on:
+      shopr-test-db:
+        condition: service_healthy
+    env_file:
+      - ./shopr-bango/.env.dev
+      - .env
+    networks:
+      - shopr_proxy
+      - shopr_network
+
+  shopr-test-db:
+    image: postgres:14-alpine
+    container_name: shopr_test_postgres
+    environment:
+      POSTGRES_DB: ${SHOPR_DB}
+      POSTGRES_USER: ${SHOPR_DB_USER}
+      POSTGRES_PASSWORD: ${SHOPR_DB_PASSWORD}
+    expose:
+      - 5432
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shopr_network
+
+  shopr-test-wallet:
+    container_name: shopr-test-wallet
+    build:
+      context: ./shopr-wallet
+    restart: unless-stopped
+    env_file:
+      - ./shopr-wallet/.env.dev
+      - .env
+    depends_on:
+      - shopr-test-wallet-db
+    networks:
+      - shopr_proxy
+      - shopr_wallet_network
+
+  shopr-test-wallet-db:
+    image: postgres:17
+    container_name: shopr-test-wallet-db
+    restart: always
+    user: postgres
+    volumes:
+      - wallet-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${WALLET_DB}
+      POSTGRES_PASSWORD: ${WALLET_DB_PASSWORD}
+      POSTGRES_USER: ${WALLET_DB_USERNAME}
+    expose:
+      - 5432
+    healthcheck:
+      test: ["CMD", "pg_ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shopr_wallet_network
+  shopr-test-email:
+    container_name: shopr-test-email
+    build:
+      context: ./shopr-email-service
+    env_file:
+      - ./shopr-email-service/.env.dev
+      - .env
+    networks:
+      - email_rabbit
+    depends_on:
+      - rabbitmq-test
+
+  rabbitmq-test:
+    image: rabbitmq:4-management-alpine
+    container_name: shopr-rabbitmq
+    hostname: rabbitmq-node
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBIT_USERNAME}
+      - RABBITMQ_DEFAULT_PASS=${RABBIT_PASSWORD}
+      - RABBIT_DEFAULT_VHOST=${RABBIT_VHOST}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq/conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - email_rabbit
+
+volumes:
+  wallet-data:
+  shopr_postgres_data:
+  rabbitmq_data:
+    driver: local
+
+networks:
+  bango_network:
+    driver: bridge
+  shopr_network:
+    driver: bridge
+  shopr_wallet_network:
+    driver: bridge
+  email_rabbit:
+    driver: bridge
+  shopr_proxy:
+    external: true

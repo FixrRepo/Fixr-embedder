@@ -1,0 +1,32 @@
+# models/visual_embedding.py
+
+import uuid
+
+from sqlalchemy import ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
+
+
+
+class VisualEmbedding():
+    __tablename__ = "visual_embedding"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+    )
+
+    report_embedding_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("report_embedding.id"),
+        nullable=False,
+    )
+
+    embedding = mapped_column(
+        Vector(512),  # Replace with your actual visual dimension
+        nullable=False,
+    )
+
+    report_embedding: Mapped["ReportEmbedding"] = relationship(
+        back_populates="visual_embeddings",
+    )
