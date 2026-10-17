@@ -8,8 +8,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geography
 from pgvector.sqlalchemy import Vector
 
+from .base import Base
 
-class ReportEmbedding():
+class ReportEmbedding(Base):
     __tablename__ = "report_embedding"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -32,4 +33,4 @@ class ReportEmbedding():
         back_populates="report_embedding",
     )
 
-    status = mapped_column()
+    status: Mapped[str]

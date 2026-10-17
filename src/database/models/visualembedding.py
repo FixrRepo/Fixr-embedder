@@ -7,9 +7,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
 
+from .base import Base
 
-
-class VisualEmbedding():
+class VisualEmbedding(Base):
     __tablename__ = "visual_embedding"
 
     id: Mapped[uuid.UUID] = mapped_column(
