@@ -19,8 +19,15 @@ class ClipEmbedder:
         return imageEmbeddings
 
     def embed_videos(self, urls: list[str])->list[EmbeddingsResults]:
-        videoEmbeddings = [ EmbeddingsResults(uuid.uuid4(), self.encode_video_url(url).frame_embeddings) for url in urls]
-        return videoEmbeddings
+        # Store each sampled frame in the same visual vector collection as images.
+        frame_embeddings = []
+        for url in urls:
+            frames = self.encode_video_url(url).frame_embeddings
+            frame_embeddings.extend(
+                EmbeddingsResults(uuid.uuid4(), frame_embedding)
+                for frame_embedding in frames
+            )
+        return frame_embeddings
     
     def encode_video_url(self, video_url:str)-> EmbeddingResult:
         
