@@ -5,7 +5,7 @@ class Settings:
     RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
     REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
     EMBEDDING_RESULT_TTL = int(os.getenv("EMBEDDING_RESULT_TTL", 86400))
-    EMBEDDING_COMPLETE_EXCHANGE = os.getenv("EMBEDDING_COMPLETED_QUEUE", "fixr.exchange")
+    EMBEDDING_COMPLETE_EXCHANGE = os.getenv("FIXR_RABBITMQ_EXCHANGE", "fixr.exchange")
     RABBITMQ_QUEUE = os.getenv("FIXR_RABBITMQ_REQUEST_QUEUE", "embedding.request")
     EMBEDDING_COMPLETED_BINDING = os.getenv(
         "FIXR_RABBITMQ_COMPLETED_ROUTING_KEY", "embedding.completed"

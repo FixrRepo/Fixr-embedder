@@ -44,7 +44,7 @@ Set these environment variables before starting the worker. Defaults are shown w
 | `DB_NAME` | `postgres` | PostgreSQL database name |
 | `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672/` | RabbitMQ connection URL |
 | `FIXR_RABBITMQ_REQUEST_QUEUE` | `embedding.request` | Durable request queue consumed by the worker |
-| `EMBEDDING_COMPLETED_QUEUE` | `fixr.exchange` | Existing exchange used to publish completion/failure events |
+| `FIXR_RABBITMQ_EXCHANGE` | `fixr.exchange` | Existing exchange used to publish completion/failure events |
 | `FIXR_RABBITMQ_COMPLETED_ROUTING_KEY` | `embedding.completed` | Completion routing key |
 | `FIXR_RABBITMQ_REQUEST_FAILED_ROUTING_KEY` | `embedding.failed` | Failure routing key |
 | `DUPLICATE_SEARCH_RADIUS_METERS` | `50` | Nearby candidate search radius in metres |
