@@ -1,60 +1,90 @@
+from uuid import UUID
+
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity
+import math
+from geoalchemy2 import Geography
+from sqlalchemy import cast, func, select
+from sqlalchemy.orm import aliased, selectinload
 
-from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
-
-from ..models.reportembedding import ReportEmbedding
+from ...embedding.similarity import calculate_visual_score
 from ..database import SessionLocal
-import math 
+from ..models.reportembedding import ReportEmbedding
+from ...config import  settings
 
-def compute_cadidate_scores(incomingEmbedding: ReportEmbedding):
-    session = SessionLocal()
-    candidates = find_report_within_search_radius(session, incomingEmbedding.coordinate, 50 )
-
-    ranked_candidates = []
-
-    for candidate in candidates:
-        existing_vectors = [np.ndarray(embedding, dtype=np.float32) for embedding in candidate.visual_embeddings]
-
-        visual_score = calculate_visual_score(incomingEmbedding.visual_embeddings, existing_vectors)
-        text_score = calculate_text_score(incomingEmbedding.text_embedding, candidate.text_embedding)
-        distance = func.ST_Distance(candidate.coordinate, incomingEmbedding.coordinate)
-        distance_score = math.exp(math.pow())
+def _vectors(visual_embeddings) -> list[np.ndarray]:
+    """Extract raw vectors at the ORM boundary for the pure scoring function."""
+    return [
+        np.asarray(item.embedding, dtype=np.float32).reshape(-1)
+        for item in visual_embeddings
+    ]
 
 
-def find_report_within_search_radius(session, incomingCoordinate, search_radius)->list[ReportEmbedding]:
-    statement = (select(ReportEmbedding)
-                 .where(
-                     func.ST_DWithin(ReportEmbedding.coordinate, incomingCoordinate, search_radius)
-                 ).options(
-                     selectinload(ReportEmbedding.visual_embeddings)
-                 ))
-    return session.scalars(statement).all()
-
-def calculate_text_score(new_embedding: np.array, existing_embedding: np.array):
-    similarities = cosine_similarity(new_embedding, existing_embedding)
-    return float(similarities.flatten())
-
-
-def calculate_visual_score(
-    new_embeddings: list[np.ndarray],
-    existing_embeddings: list[np.ndarray],
-) -> float:
-    if not new_embeddings or not existing_embeddings:
-        return 0.0
-
-    new_vectors = np.stack(new_embeddings)
-    existing_vectors = np.stack(existing_embeddings)
-
-    # Rows = new embeddings; columns = existing embeddings.
-    similarities = cosine_similarity(
-        new_vectors,
-        existing_vectors,
+def find_report_within_search_radius(
+    session, incoming_id: UUID, search_radius: float
+) -> list[tuple[ReportEmbedding, float]]:
+    """Fetch nearby report embeddings and geography distances in metres."""
+    incoming_report = aliased(ReportEmbedding)
+    coordinate_geography = cast(ReportEmbedding.coordinate, Geography(srid=4326))
+    incoming_geography = cast(incoming_report.coordinate, Geography(srid=4326))
+    distance = func.ST_Distance(coordinate_geography, incoming_geography)
+    statement = (
+        select(ReportEmbedding, distance.label("distance_meters"))
+        .join(incoming_report, incoming_report.id == incoming_id)
+        .where(func.ST_DWithin(coordinate_geography, incoming_geography, search_radius))
+        .where(ReportEmbedding.id != incoming_id)
+        .options(selectinload(ReportEmbedding.visual_embeddings))
     )
+    return [(row[0], float(row[1])) for row in session.execute(statement).all()]
 
-    # Find the best existing match for each new embedding.
-    best_matches = similarities.max(axis=1)
 
-    # One aggregate score for this existing report.
-    return float(best_matches.mean())
+def compute_candidate_scores(
+    incoming_report_id: str, search_radius: float = 50, top_n: int = 5
+) -> list[dict]:
+    """Rank nearby reports by visual evidence; geography only filters candidates."""
+    if search_radius < 0:
+        raise ValueError("search_radius must not be negative")
+    if top_n < 1:
+        raise ValueError("top_n must be at least 1")
+
+    with SessionLocal() as session:
+        incoming = session.get(ReportEmbedding, UUID(str(incoming_report_id)))
+        if incoming is None:
+            raise LookupError(f"Report embedding not found for report {incoming_report_id}")
+        incoming_vectors = _vectors(incoming.visual_embeddings)
+        candidates = find_report_within_search_radius(
+            session,
+            incoming.id,
+            search_radius,
+        )
+
+        scored = []
+        for candidate, distance_meters in candidates:
+            visual_score = calculate_visual_score(
+                incoming_vectors, _vectors(candidate.visual_embeddings)
+            )
+            if visual_score is None:
+                continue
+            scored.append(
+                {
+                    "reportId": str(candidate.id),
+                    "visualScore": visual_score,
+                    "distanceMeters": distance_meters,
+                    "distanceScore": exponentialDecay(distance_meters),
+                    "similarityScore": computeSimilarityScore(visual_score, distance_meters)
+                }
+            )
+
+    scored.sort(key=lambda item: item["similarityScore"], reverse=True)
+    ranked = scored[:top_n]
+    for rank, candidate in enumerate(ranked, start=1):
+        candidate["rank"] = rank
+    return ranked
+
+def computeSimilarityScore(visualScore: float, distance_m: float):
+    visualScoreW = visualScore* settings.VISUAL_SIMILARITY_SCORE_WEIGHT
+    distanceScoreW = exponentialDecay(distance_m) * settings.DISTANCE_SIMILARITY_SCORE_WEIGHT
+
+    return visualScoreW + distanceScoreW
+
+def exponentialDecay(distance_meters:float):
+    return math.pow(math.exp(-(distance_meters/settings.EXPONENTIAL_DECAY_RATE)), 2)
